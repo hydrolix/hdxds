@@ -1,6 +1,6 @@
 module github.com/grafana/sqlds/v5
 
-go 1.25.7
+go 1.25.9
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
@@ -60,7 +60,9 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-plugin v1.7.0 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
+	github.com/hydrolix/clickhouse-sql-parser v0.5.1
 	github.com/jaegertracing/jaeger-idl v0.6.0 // indirect
+	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jszwedko/go-datemath v0.1.1-0.20230526204004-640a500621d6 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
