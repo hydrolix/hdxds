@@ -68,6 +68,30 @@ type SQLDatasource struct {
 	PostCheckHealth func(ctx context.Context, req *backend.CheckHealthRequest) *backend.CheckHealthResult
 	// ResourceMiddleware (optional). Allows interception to CallResource before it is passed to sqlds
 	ResourceMiddleware func(next backend.CallResourceHandler) backend.CallResourceHandler
+
+	// Interpolator (optional). When non-nil, replaces the default interpolation
+	// pipeline. Plugins use this to install AST-aware or otherwise customised
+	// implementations. A nil value resolves to DefaultInterpolator{}.
+	Interpolator Interpolator
+
+	// PreInterpolate (optional). Invoked once per query before any macro fires.
+	// Use for per-query setup such as parsing the SQL into an AST and stashing
+	// it on the service registry so context macros can read it without
+	// re-parsing. Returning a non-nil error aborts the query.
+	PreInterpolate func(ctx context.Context, query *Query, rawJSON json.RawMessage) error
+
+	// PostInterpolate (optional). Invoked once after all macros have expanded.
+	// Its returned string replaces the rewritten SQL. Use for final-pass
+	// adjustments (e.g. injecting LIMIT clauses, rewriting projections).
+	PostInterpolate func(ctx context.Context, query *Query, sql string) (string, error)
+
+	// contextMacros holds new-style macros (see ContextMacroFunc and
+	// MacroContext) keyed by name. Use RegisterMacro to populate.
+	contextMacros   map[string]ContextMacroFunc
+	contextMacrosMu sync.RWMutex
+
+	// services backs the plugin service registry (see Register and Resolve).
+	services sync.Map
 }
 
 // NewDatasource creates a new `SQLDatasource`.
@@ -200,10 +224,12 @@ func (ds *SQLDatasource) handleQuery(ctx context.Context, req backend.DataQuery,
 		return nil, err
 	}
 
-	// Apply supported macros to the query
-	q.RawSQL, err = Interpolate(ds.driver(), q)
+	// Apply supported macros to the query. Uses ds.Interpolator if set,
+	// otherwise the package default — which preserves byte-for-byte parity
+	// with the legacy sqlutil.Interpolate path.
+	q.RawSQL, err = ds.interpolate(ctx, q, req.JSON)
 	if err != nil {
-		if errors.Is(err, sqlutil.ErrorBadArgumentCount) || err.Error() == ErrorParsingMacroBrackets.Error() {
+		if errors.Is(err, sqlutil.ErrorBadArgumentCount) || errors.Is(err, ErrorParsingMacroBrackets) || err.Error() == ErrorParsingMacroBrackets.Error() {
 			err = backend.DownstreamError(err)
 		}
 		return sqlutil.ErrorFrameFromQuery(q), fmt.Errorf("%s: %w", "Could not apply macros", err)
